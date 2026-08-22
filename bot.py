@@ -22,29 +22,29 @@ db = Database()
 class SupportState(StatesGroup):
     waiting_problem = State()
 
-# --- Клавиатуры с Premium-эмодзи (ТОЛЬКО ТУТ) ---
+# --- Клавиатуры с Premium-эмодзи (ТОЛЬКО анимация) ---
 
 def main_menu():
-    """Главное меню"""
+    """Главное меню — только анимированные эмодзи"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text="🛡️ Создать заявку",  # ✅ Обычный текст с эмодзи
+                text="Создать заявку",  # ← БЕЗ эмодзи в тексте
                 callback_data="ticket",
-                icon_custom_emoji_id=Emoji.SHIELD  # ✅ ID для анимации
+                icon_custom_emoji_id=Emoji.SHIELD  # ← только анимация
             )],
             [InlineKeyboardButton(
-                text="⭐ Курс монет",
+                text="Курс монет",
                 callback_data="rate",
                 icon_custom_emoji_id=Emoji.STAR
             )],
             [InlineKeyboardButton(
-                text="💎 Частые вопросы",
+                text="Частые вопросы",
                 callback_data="faq",
                 icon_custom_emoji_id=Emoji.DIAMOND
             )],
             [InlineKeyboardButton(
-                text="🚀 Связаться с оператором",
+                text="Связаться с оператором",
                 callback_data="operator",
                 icon_custom_emoji_id=Emoji.ROCKET
             )]
@@ -56,7 +56,7 @@ def back_menu():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text="🛡️ Назад",
+                text="Назад",
                 callback_data="back",
                 icon_custom_emoji_id=Emoji.SHIELD
             )]
@@ -68,34 +68,34 @@ def faq_menu():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text="⭐ Как пополнить баланс?",
+                text="Как пополнить баланс?",
                 callback_data="faq_0",
                 icon_custom_emoji_id=Emoji.STAR
             )],
             [InlineKeyboardButton(
-                text="💎 Какие пакеты есть?",
+                text="Какие пакеты есть?",
                 callback_data="faq_1",
                 icon_custom_emoji_id=Emoji.DIAMOND
             )],
             [InlineKeyboardButton(
-                text="🚀 Как создать задание?",
+                text="Как создать задание?",
                 callback_data="faq_2",
                 icon_custom_emoji_id=Emoji.ROCKET
             )],
             [InlineKeyboardButton(
-                text="🔥 Почему задержка?",
+                text="Почему задержка?",
                 callback_data="faq_3",
                 icon_custom_emoji_id=Emoji.FIRE
             )],
             [InlineKeyboardButton(
-                text="🛡️ Назад",
+                text="Назад",
                 callback_data="back",
                 icon_custom_emoji_id=Emoji.SHIELD
             )]
         ]
     )
 
-# --- FAQ (с обычными эмодзи в тексте) ---
+# --- FAQ ---
 
 FAQ = {
     "Как пополнить баланс?": 
@@ -103,8 +103,7 @@ FAQ = {
         "Ты можешь пополнить баланс двумя способами:\n"
         "• ⭐ **Звёзды Telegram** — покупай внутри бота\n"
         "• 💎 **Криптовалюта** — перевод на наш кошелёк\n\n"
-        "Минимальная сумма пополнения: 1 ⭐ или 1.5 ₽\n"
-        "Способы пополнения: /rate",
+        "Минимальная сумма пополнения: 1 ⭐ или 1.5 ₽",
     
     "Какие пакеты есть?": 
         "💎 **Пакеты монет:**\n\n"
@@ -188,7 +187,6 @@ async def create_ticket(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(SupportState.waiting_problem)
 async def save_ticket(message: types.Message, state: FSMContext):
-    # Удаляем предыдущее сообщение бота
     data = await state.get_data()
     if "last_message_id" in data:
         try:
@@ -202,10 +200,8 @@ async def save_ticket(message: types.Message, state: FSMContext):
         message.text
     )
     
-    # Удаляем сообщение пользователя с проблемой
     await message.delete()
     
-    # Отправляем подтверждение
     await message.answer(
         "🎉 **Заявка #{ticket_id} создана!**\n\n"
         "🚀 Оператор свяжется с тобой в ближайшее время.\n"
@@ -216,7 +212,6 @@ async def save_ticket(message: types.Message, state: FSMContext):
     
     await state.clear()
     
-    # Уведомление админу
     await bot.send_message(
         ADMIN_ID,
         f"🔥 **Новая заявка #{ticket_id}**\n\n"
