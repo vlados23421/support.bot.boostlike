@@ -1,12 +1,13 @@
 import asyncio
 import logging
 import os
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from config import BOT_TOKEN, ADMIN_ID
+from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID
 from database import Database
 from emoji import Emoji
 import aiohttp
@@ -18,20 +19,19 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 db = Database()
 
-# Состояния
+# --- Состояния ---
 class SupportState(StatesGroup):
     waiting_problem = State()
 
-# --- Клавиатуры с Premium-эмодзи (ТОЛЬКО анимация) ---
+# --- Клавиатуры ---
 
 def main_menu():
-    """Главное меню — только анимированные эмодзи"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text="Создать заявку",  # ← БЕЗ эмодзи в тексте
+                text="Создать заявку",
                 callback_data="ticket",
-                icon_custom_emoji_id=Emoji.SHIELD  # ← только анимация
+                icon_custom_emoji_id=Emoji.SHIELD
             )],
             [InlineKeyboardButton(
                 text="Курс монет",
@@ -47,12 +47,16 @@ def main_menu():
                 text="Связаться с оператором",
                 callback_data="operator",
                 icon_custom_emoji_id=Emoji.ROCKET
+            )],
+            [InlineKeyboardButton(
+                text="📖 Инструкция",
+                callback_data="guide",
+                icon_custom_emoji_id=Emoji.DIAMOND
             )]
         ]
     )
 
 def back_menu():
-    """Кнопка назад"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
@@ -64,7 +68,6 @@ def back_menu():
     )
 
 def faq_menu():
-    """Меню FAQ"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
@@ -92,6 +95,19 @@ def faq_menu():
                 callback_data="back",
                 icon_custom_emoji_id=Emoji.SHIELD
             )]
+        ]
+    )
+
+def rate_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⭐ 1", callback_data="rate_1"),
+                InlineKeyboardButton(text="⭐ 2", callback_data="rate_2"),
+                InlineKeyboardButton(text="⭐ 3", callback_data="rate_3"),
+                InlineKeyboardButton(text="⭐ 4", callback_data="rate_4"),
+                InlineKeyboardButton(text="⭐ 5", callback_data="rate_5")
+            ]
         ]
     )
 
@@ -139,6 +155,22 @@ FAQ = {
         "🎉 Если прошло больше часа — создай заявку!"
 }
 
+# --- Автоответы ---
+
+AUTO_REPLIES = {
+    "курс": "💱 Узнать курс монет можно по команде /rate",
+    "монет": "💱 Узнать курс монет можно по команде /rate",
+    "заявк": "📝 Создать заявку можно через /start → Создать заявку",
+    "помощ": "📝 Создай заявку через /start → Создать заявку",
+    "привет": "👋 Привет! Чем могу помочь? Нажми /start",
+    "здравствуй": "👋 Здравствуйте! Чем могу помочь?",
+    "спасибо": "🙌 Пожалуйста! Обращайтесь ещё!",
+    "проблем": "🛡️ Опиши проблему в заявке через /start → Создать заявку",
+    "баг": "🐛 Опиши баг в заявке, мы всё исправим!",
+    "не работает": "🔧 Создай заявку, мы проверим!",
+    "инструкц": "📖 Инструкция: /start → Частые вопросы → Как создать задание?"
+}
+
 # --- Обработчики ---
 
 @dp.message(Command("start"))
@@ -150,7 +182,8 @@ async def start(message: types.Message):
         "🛡️ Создать заявку в поддержку\n"
         "⭐ Узнать курс монет\n"
         "💎 Получить ответы на вопросы\n"
-        "🚀 Связаться с оператором\n\n"
+        "🚀 Связаться с оператором\n"
+        "📖 Изучить инструкции\n\n"
         "Выбери действие ниже 👇",
         parse_mode="Markdown",
         reply_markup=main_menu()
@@ -167,6 +200,20 @@ async def back_to_menu(callback: CallbackQuery):
     )
     await callback.answer()
 
+# --- Автоответы ---
+
+@dp.message()
+async def auto_reply(message: types.Message):
+    if message.text is None or message.text.startswith('/'):
+        return
+    
+    text = message.text.lower()
+    
+    for word, reply in AUTO_REPLIES.items():
+        if word in text:
+            await message.answer(reply)
+            break
+
 # --- Заявки ---
 
 @dp.callback_query(F.data == "ticket")
@@ -174,6 +221,7 @@ async def create_ticket(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     msg = await callback.message.answer(
         "🛡️ **Опиши свою проблему подробно:**\n\n"
+        "Ты можешь также отправить скриншот 📸\n\n"
         "Укажи, пожалуйста:\n"
         "• ID заказа (если есть)\n"
         "• Что случилось\n"
@@ -184,6 +232,62 @@ async def create_ticket(callback: CallbackQuery, state: FSMContext):
     await state.update_data(last_message_id=msg.message_id)
     await state.set_state(SupportState.waiting_problem)
     await callback.answer()
+
+@dp.message(SupportState.waiting_problem, F.photo)
+async def save_ticket_with_photo(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    if "last_message_id" in data:
+        try:
+            await message.bot.delete_message(message.chat.id, data["last_message_id"])
+        except:
+            pass
+    
+    photo = await message.photo[-1].download()
+    photo_path = photo.name
+    
+    ticket_id = db.add_ticket(
+        message.from_user.id,
+        message.from_user.username or "без username",
+        f"[Фото] {message.caption or 'Без описания'}"
+    )
+    
+    await message.delete()
+    
+    await message.answer(
+        f"🎉 **Заявка #{ticket_id} создана!**\n\n"
+        "🚀 Оператор свяжется с тобой в ближайшее время.\n"
+        "🛡️ Ожидай ответа в этом чате 📩",
+        parse_mode="Markdown",
+        reply_markup=back_menu()
+    )
+    
+    await state.clear()
+    
+    user_link = f"@{message.from_user.username}" if message.from_user.username else f"ID: {message.from_user.id}"
+    caption = (
+        f"🔥 **Новая заявка #{ticket_id} с фото**\n\n"
+        f"👤 {user_link}\n"
+        f"🆔 ID: {message.from_user.id}\n\n"
+        f"📝 **Текст:**\n{message.caption or 'Без описания'}"
+    )
+    
+    # Отправляем в канал
+    with open(photo_path, 'rb') as photo_file:
+        await bot.send_photo(
+            CHANNEL_ID,
+            photo_file,
+            caption=caption,
+            parse_mode="Markdown"
+        )
+    
+    # Отправляем в ЛС админу
+    with open(photo_path, 'rb') as photo_file:
+        await bot.send_photo(
+            ADMIN_ID,
+            photo_file,
+            caption=caption,
+            parse_mode="Markdown"
+        )
 
 @dp.message(SupportState.waiting_problem)
 async def save_ticket(message: types.Message, state: FSMContext):
@@ -212,16 +316,210 @@ async def save_ticket(message: types.Message, state: FSMContext):
     
     await state.clear()
     
+    user_link = f"@{message.from_user.username}" if message.from_user.username else f"ID: {message.from_user.id}"
+    caption = (
+        f"🔥 **Новая заявка #{ticket_id}**\n\n"
+        f"👤 {user_link}\n"
+        f"🆔 ID: {message.from_user.id}\n\n"
+        f"📝 **Текст:**\n{message.text[:500]}"
+    )
+    
+    # Отправляем в канал
+    await bot.send_message(
+        CHANNEL_ID,
+        caption,
+        parse_mode="Markdown"
+    )
+    
+    # Отправляем в ЛС админу
     await bot.send_message(
         ADMIN_ID,
-        f"🔥 **Новая заявка #{ticket_id}**\n\n"
-        f"👤 @{message.from_user.username or message.from_user.id}\n"
-        f"🆔 ID: {message.from_user.id}\n\n"
-        f"📝 **Текст:**\n{message.text[:500]}",
+        caption,
         parse_mode="Markdown"
     )
 
-# --- Курс монет ---
+# --- Ответ пользователю ---
+
+@dp.message(Command("reply"))
+async def reply_to_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    try:
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            await message.answer("❌ Использование: /reply <id> <текст ответа>")
+            return
+        
+        ticket_id = int(parts[1])
+        reply_text = parts[2]
+        
+        ticket = db.get_ticket_by_id(ticket_id)
+        if not ticket:
+            await message.answer(f"❌ Заявка #{ticket_id} не найдена")
+            return
+        
+        await bot.send_message(
+            ticket[1],
+            f"📩 **Ответ оператора по заявке #{ticket_id}**\n\n"
+            f"{reply_text}\n\n"
+            f"🛡️ Если проблема решена, создайте новую заявку.",
+            parse_mode="Markdown"
+        )
+        
+        user_link = f"@{ticket[2]}" if ticket[2] else f"ID: {ticket[1]}"
+        await bot.send_message(
+            CHANNEL_ID,
+            f"📩 **Ответ на заявку #{ticket_id}**\n\n"
+            f"👤 {user_link}\n\n"
+            f"📝 {reply_text}",
+            parse_mode="Markdown"
+        )
+        
+        await message.answer(f"✅ Ответ отправлен пользователю (заявка #{ticket_id})")
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+# --- Оценка поддержки ---
+
+@dp.message(Command("close"))
+async def close_ticket(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    try:
+        ticket_id = int(message.text.split()[1])
+        db.close_ticket(ticket_id)
+        
+        ticket = db.get_ticket_by_id(ticket_id)
+        if ticket:
+            await bot.send_message(
+                ticket[1],
+                f"✅ **Заявка #{ticket_id} закрыта!**\n\n"
+                "Пожалуйста, оцени качество поддержки:",
+                reply_markup=rate_keyboard()
+            )
+            
+            user_link = f"@{ticket[2]}" if ticket[2] else f"ID: {ticket[1]}"
+            await bot.send_message(
+                CHANNEL_ID,
+                f"✅ **Заявка #{ticket_id} закрыта**\n\n"
+                f"👤 {user_link}",
+                parse_mode="Markdown"
+            )
+        
+        await message.answer(f"🎉 Заявка #{ticket_id} закрыта")
+        
+    except:
+        await message.answer("❌ Использование: /close <id>")
+
+@dp.callback_query(F.data.startswith("rate_"))
+async def save_rate(callback: CallbackQuery):
+    try:
+        rating = int(callback.data.split("_")[1])
+        user_id = callback.from_user.id
+        
+        db.add_feedback(user_id, rating)
+        
+        messages = {
+            1: "😢 Спасибо за честность! Мы работаем над улучшением.",
+            2: "😕 Спасибо! Расскажи, что нам улучшить?",
+            3: "😐 Спасибо! Постараемся быть лучше.",
+            4: "😊 Спасибо! Рады, что тебе понравилось!",
+            5: "🌟 Спасибо! Рады, что ты доволен!"
+        }
+        
+        await callback.message.edit_text(
+            f"⭐ Спасибо за оценку {rating}!\n\n{messages.get(rating, '')}"
+        )
+        
+        await bot.send_message(
+            ADMIN_ID,
+            f"📊 **Новая оценка поддержки**\n\n"
+            f"👤 @{callback.from_user.username or callback.from_user.id}\n"
+            f"⭐ Оценка: {rating}/5"
+        )
+        
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        await callback.answer()
+
+# --- Статистика ---
+
+@dp.message(Command("stats"))
+async def show_stats(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    stats = db.get_stats()
+    
+    today = datetime.now().strftime("%Y-%m-%d")
+    db.cursor.execute(
+        "SELECT COUNT(*) FROM tickets WHERE date(created_at) = ?",
+        (today,)
+    )
+    today_tickets = db.cursor.fetchone()[0]
+    
+    db.cursor.execute(
+        "SELECT problem, COUNT(*) FROM tickets GROUP BY problem ORDER BY COUNT(*) DESC LIMIT 5"
+    )
+    top_problems = db.cursor.fetchall()
+    
+    db.cursor.execute(
+        "SELECT AVG(rating) FROM feedback"
+    )
+    avg_rating = db.cursor.fetchone()[0] or 0
+    
+    response = (
+        f"💎 **Статистика бота**\n\n"
+        f"📊 **Заявки:**\n"
+        f"• Всего: {stats['total_tickets']}\n"
+        f"• Открытых: {stats['open_tickets']}\n"
+        f"• Закрытых: {stats['closed_tickets']}\n"
+        f"• Сегодня: {today_tickets}\n\n"
+        f"👤 **Пользователи:** {stats['total_users']}\n\n"
+        f"⭐ **Средняя оценка:** {avg_rating:.1f}/5\n\n"
+    )
+    
+    if top_problems:
+        response += "📝 **Частые проблемы:**\n"
+        for problem, count in top_problems:
+            response += f"• {problem[:30]}... ({count})\n"
+    
+    await message.answer(response, parse_mode="Markdown")
+
+# --- Админ-панель ---
+
+@dp.message(Command("admin"))
+async def admin_panel(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("🛡️ ⛔ Доступ запрещен")
+        return
+    
+    tickets = db.get_tickets()
+    if not tickets:
+        await message.answer("💎 📭 Нет открытых заявок")
+        return
+    
+    for ticket in tickets:
+        await message.answer(
+            f"🔥 **Заявка #{ticket[0]}**\n\n"
+            f"👤 @{ticket[2] or ticket[1]}\n"
+            f"🆔 ID: {ticket[1]}\n\n"
+            f"📝 **Текст:**\n{ticket[3][:300]}\n\n"
+            f"📅 {ticket[4]}\n\n"
+            f"Чтобы ответить: /reply {ticket[0]} <текст>\n"
+            f"Чтобы закрыть: /close {ticket[0]}",
+            parse_mode="Markdown"
+        )
+
+# --- Остальные обработчики ---
 
 @dp.callback_query(F.data == "rate")
 async def show_rate(callback: CallbackQuery):
@@ -254,8 +552,6 @@ async def show_rate(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- FAQ ---
-
 @dp.callback_query(F.data == "faq")
 async def show_faq(callback: CallbackQuery):
     await callback.message.delete()
@@ -282,8 +578,6 @@ async def faq_answer(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- Оператор ---
-
 @dp.callback_query(F.data == "operator")
 async def contact_operator(callback: CallbackQuery):
     await callback.message.delete()
@@ -300,53 +594,21 @@ async def contact_operator(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- Админ-панель ---
-
-@dp.message(Command("admin"))
-async def admin_panel(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("🛡️ ⛔ Доступ запрещен")
-        return
-    
-    tickets = db.get_tickets()
-    if not tickets:
-        await message.answer("💎 📭 Нет открытых заявок")
-        return
-    
-    for ticket in tickets[:5]:
-        await message.answer(
-            f"🔥 **Заявка #{ticket[0]}**\n\n"
-            f"👤 @{ticket[2] or ticket[1]}\n"
-            f"🆔 ID: {ticket[1]}\n\n"
-            f"📝 **Текст:**\n{ticket[3][:300]}\n\n"
-            f"📅 {ticket[4]}",
-            parse_mode="Markdown"
-        )
-
-@dp.message(Command("close"))
-async def close_ticket(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        ticket_id = int(message.text.split()[1])
-        db.close_ticket(ticket_id)
-        await message.answer("🎉 ✅ Заявка #{ticket_id} закрыта")
-    except:
-        await message.answer("🛡️ ❌ Использование: /close <id>")
-
-@dp.message(Command("stats"))
-async def show_stats(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    stats = db.get_stats()
-    await message.answer(
-        "💎 **Статистика:**\n\n"
-        f"🛡️ Всего заявок: {stats['total_tickets']}\n"
-        f"⭐ Открытых: {stats['open_tickets']}\n"
-        f"🔥 Закрытых: {stats['closed_tickets']}\n"
-        f"🎉 Пользователей: {stats['total_users']}",
-        parse_mode="Markdown"
+@dp.callback_query(F.data == "guide")
+async def show_guide(callback: CallbackQuery):
+    await callback.message.delete()
+    await callback.message.answer(
+        "📖 **Инструкция по созданию задания**\n\n"
+        "1️⃣ Перейди на наш сайт\n"
+        "2️⃣ Скопируй ссылку на пост\n"
+        "3️⃣ Выбери количество лайков\n"
+        "4️⃣ Оплати через звёзды или крипту\n"
+        "5️⃣ Лайки начислятся через 5-30 минут\n\n"
+        "🔥 **Совет:** Покупай пакеты от 100 звёзд — экономия 40%!",
+        parse_mode="Markdown",
+        reply_markup=back_menu()
     )
+    await callback.answer()
 
 # --- Запуск с веб-сервером ---
 
