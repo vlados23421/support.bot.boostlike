@@ -22,29 +22,29 @@ db = Database()
 class SupportState(StatesGroup):
     waiting_problem = State()
 
-# --- Клавиатуры с Premium-эмодзи ---
+# --- Клавиатуры с Premium-эмодзи (ТОЛЬКО ТУТ) ---
 
 def main_menu():
     """Главное меню"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"{Emoji.SHIELD} Создать заявку", 
+                text="🛡️ Создать заявку",  # ✅ Обычный текст с эмодзи
                 callback_data="ticket",
-                icon_custom_emoji_id=Emoji.SHIELD
+                icon_custom_emoji_id=Emoji.SHIELD  # ✅ ID для анимации
             )],
             [InlineKeyboardButton(
-                text=f"{Emoji.STAR} Курс монет", 
+                text="⭐ Курс монет",
                 callback_data="rate",
                 icon_custom_emoji_id=Emoji.STAR
             )],
             [InlineKeyboardButton(
-                text=f"{Emoji.DIAMOND} Частые вопросы", 
+                text="💎 Частые вопросы",
                 callback_data="faq",
                 icon_custom_emoji_id=Emoji.DIAMOND
             )],
             [InlineKeyboardButton(
-                text=f"{Emoji.ROCKET} Связаться с оператором", 
+                text="🚀 Связаться с оператором",
                 callback_data="operator",
                 icon_custom_emoji_id=Emoji.ROCKET
             )]
@@ -56,7 +56,7 @@ def back_menu():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"{Emoji.SHIELD} Назад", 
+                text="🛡️ Назад",
                 callback_data="back",
                 icon_custom_emoji_id=Emoji.SHIELD
             )]
@@ -68,47 +68,47 @@ def faq_menu():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"{Emoji.STAR} Как пополнить баланс?", 
+                text="⭐ Как пополнить баланс?",
                 callback_data="faq_0",
                 icon_custom_emoji_id=Emoji.STAR
             )],
             [InlineKeyboardButton(
-                text=f"{Emoji.DIAMOND} Какие пакеты есть?", 
+                text="💎 Какие пакеты есть?",
                 callback_data="faq_1",
                 icon_custom_emoji_id=Emoji.DIAMOND
             )],
             [InlineKeyboardButton(
-                text=f"{Emoji.ROCKET} Как создать задание?", 
+                text="🚀 Как создать задание?",
                 callback_data="faq_2",
                 icon_custom_emoji_id=Emoji.ROCKET
             )],
             [InlineKeyboardButton(
-                text=f"{Emoji.FIRE} Почему задержка?", 
+                text="🔥 Почему задержка?",
                 callback_data="faq_3",
                 icon_custom_emoji_id=Emoji.FIRE
             )],
             [InlineKeyboardButton(
-                text=f"{Emoji.SHIELD} Назад", 
+                text="🛡️ Назад",
                 callback_data="back",
                 icon_custom_emoji_id=Emoji.SHIELD
             )]
         ]
     )
 
-# --- FAQ (обновленный) ---
+# --- FAQ (с обычными эмодзи в тексте) ---
 
 FAQ = {
     "Как пополнить баланс?": 
-        f"{Emoji.STAR} **Пополнение баланса:**\n\n"
+        "⭐ **Пополнение баланса:**\n\n"
         "Ты можешь пополнить баланс двумя способами:\n"
-        f"• {Emoji.STAR} **Звёзды Telegram** — покупай внутри бота\n"
-        f"• {Emoji.DIAMOND} **Криптовалюта** — перевод на наш кошелёк\n\n"
+        "• ⭐ **Звёзды Telegram** — покупай внутри бота\n"
+        "• 💎 **Криптовалюта** — перевод на наш кошелёк\n\n"
         "Минимальная сумма пополнения: 1 ⭐ или 1.5 ₽\n"
         "Способы пополнения: /rate",
     
     "Какие пакеты есть?": 
-        f"{Emoji.DIAMOND} **Пакеты монет:**\n\n"
-        f"{Emoji.STAR} **За звёзды:**\n"
+        "💎 **Пакеты монет:**\n\n"
+        "⭐ **За звёзды:**\n"
         "• 1 ⭐ → 150 монет\n"
         "• 5 ⭐ → 825 монет\n"
         "• 10 ⭐ → 1 800 монет\n"
@@ -116,28 +116,28 @@ FAQ = {
         "• 50 ⭐ → 9 750 монет\n"
         "• 75 ⭐ → 15 750 монет\n"
         "• 100 ⭐ → 21 000 монет\n\n"
-        f"{Emoji.DIAMOND} **За крипту:**\n"
+        "💎 **За крипту:**\n"
         "• 1.5 ₽ → 450 монет\n"
         "• 7.5 ₽ → 2 250 монет\n"
         "• 15 ₽ → 4 500 монет\n"
         "• 38 ₽ → 11 400 монет\n\n"
-        f"{Emoji.FIRE} **Бонус!** 100 звёзд дают на 40% больше!",
+        "🔥 **Бонус!** 100 звёзд дают на 40% больше!",
     
     "Как создать задание?": 
-        f"{Emoji.ROCKET} **Создание задания:**\n\n"
+        "🚀 **Создание задания:**\n\n"
         "1. Перейди на наш сайт\n"
         "2. Вставь ссылку на пост\n"
         "3. Укажи количество лайков\n"
         "4. Подтверди заказ\n\n"
-        f"{Emoji.SHIELD} Лайки начисляются в течение 5-30 минут.",
+        "🛡️ Лайки начисляются в течение 5-30 минут.",
     
     "Почему задержка?": 
-        f"{Emoji.FIRE} **Почему лайки идут долго?**\n\n"
+        "🔥 **Почему лайки идут долго?**\n\n"
         "Наши боты работают в несколько потоков,\n"
         "чтобы избежать блокировок.\n\n"
         "• Обычно: 5-30 минут\n"
         "• В пиковые часы: до 1 часа\n\n"
-        f"{Emoji.PARTY} Если прошло больше часа — создай заявку!"
+        "🎉 Если прошло больше часа — создай заявку!"
 }
 
 # --- Обработчики ---
@@ -145,13 +145,13 @@ FAQ = {
 @dp.message(Command("start"))
 async def start(message: types.Message):
     await message.answer(
-        f"{Emoji.PARTY} **Привет!**\n\n"
+        "🎉 **Привет!**\n\n"
         "Я бот поддержки **BoostSocialLikeBot**.\n\n"
         "Здесь ты можешь:\n"
-        f"{Emoji.SHIELD} Создать заявку в поддержку\n"
-        f"{Emoji.STAR} Узнать курс монет\n"
-        f"{Emoji.DIAMOND} Получить ответы на вопросы\n"
-        f"{Emoji.ROCKET} Связаться с оператором\n\n"
+        "🛡️ Создать заявку в поддержку\n"
+        "⭐ Узнать курс монет\n"
+        "💎 Получить ответы на вопросы\n"
+        "🚀 Связаться с оператором\n\n"
         "Выбери действие ниже 👇",
         parse_mode="Markdown",
         reply_markup=main_menu()
@@ -161,7 +161,7 @@ async def start(message: types.Message):
 async def back_to_menu(callback: CallbackQuery):
     await callback.message.delete()
     await callback.message.answer(
-        f"{Emoji.PARTY} **Главное меню**\n\n"
+        "🎉 **Главное меню**\n\n"
         "Выбери действие:",
         parse_mode="Markdown",
         reply_markup=main_menu()
@@ -174,12 +174,12 @@ async def back_to_menu(callback: CallbackQuery):
 async def create_ticket(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     msg = await callback.message.answer(
-        f"{Emoji.SHIELD} **Опиши свою проблему подробно:**\n\n"
+        "🛡️ **Опиши свою проблему подробно:**\n\n"
         "Укажи, пожалуйста:\n"
         "• ID заказа (если есть)\n"
         "• Что случилось\n"
         "• Когда это произошло\n\n"
-        f"{Emoji.ROCKET} Оператор ответит в ближайшее время ⏳",
+        "🚀 Оператор ответит в ближайшее время ⏳",
         parse_mode="Markdown"
     )
     await state.update_data(last_message_id=msg.message_id)
@@ -207,9 +207,9 @@ async def save_ticket(message: types.Message, state: FSMContext):
     
     # Отправляем подтверждение
     await message.answer(
-        f"{Emoji.PARTY} **Заявка #{ticket_id} создана!**\n\n"
-        f"{Emoji.ROCKET} Оператор свяжется с тобой в ближайшее время.\n"
-        f"{Emoji.SHIELD} Ожидай ответа в этом чате 📩",
+        "🎉 **Заявка #{ticket_id} создана!**\n\n"
+        "🚀 Оператор свяжется с тобой в ближайшее время.\n"
+        "🛡️ Ожидай ответа в этом чате 📩",
         parse_mode="Markdown",
         reply_markup=back_menu()
     )
@@ -219,7 +219,7 @@ async def save_ticket(message: types.Message, state: FSMContext):
     # Уведомление админу
     await bot.send_message(
         ADMIN_ID,
-        f"{Emoji.FIRE} **Новая заявка #{ticket_id}**\n\n"
+        f"🔥 **Новая заявка #{ticket_id}**\n\n"
         f"👤 @{message.from_user.username or message.from_user.id}\n"
         f"🆔 ID: {message.from_user.id}\n\n"
         f"📝 **Текст:**\n{message.text[:500]}",
@@ -233,10 +233,10 @@ async def show_rate(callback: CallbackQuery):
     await callback.message.delete()
     
     text = (
-        f"{Emoji.DIAMOND} **Курс монет**\n\n"
-        f"{Emoji.STAR} За 1 ⭐ — 150 монет\n"
-        f"{Emoji.DIAMOND} За 1 ₽ в крипте — 300 монет\n\n"
-        f"{Emoji.PARTY} **Пакеты за звёзды:**\n"
+        "💎 **Курс монет**\n\n"
+        "⭐ За 1 ⭐ — 150 монет\n"
+        "💎 За 1 ₽ в крипте — 300 монет\n\n"
+        "🎉 **Пакеты за звёзды:**\n"
         "• 1 ⭐ → 150 монет\n"
         "• 5 ⭐ → 825 монет\n"
         "• 10 ⭐ → 1 800 монет\n"
@@ -244,12 +244,12 @@ async def show_rate(callback: CallbackQuery):
         "• 50 ⭐ → 9 750 монет\n"
         "• 75 ⭐ → 15 750 монет\n"
         "• 100 ⭐ → 21 000 монет\n\n"
-        f"{Emoji.DIAMOND} **Пакеты за крипту:**\n"
+        "💎 **Пакеты за крипту:**\n"
         "• 1.5 ₽ → 450 монет\n"
         "• 7.5 ₽ → 2 250 монет\n"
         "• 15 ₽ → 4 500 монет\n"
         "• 38 ₽ → 11 400 монет\n\n"
-        f"{Emoji.FIRE} **Бонус!** 100 звёзд дают на 40% больше!"
+        "🔥 **Бонус!** 100 звёзд дают на 40% больше!"
     )
     
     await callback.message.answer(
@@ -266,7 +266,7 @@ async def show_faq(callback: CallbackQuery):
     await callback.message.delete()
     
     await callback.message.answer(
-        f"{Emoji.DIAMOND} **Часто задаваемые вопросы**\n\n"
+        "💎 **Часто задаваемые вопросы**\n\n"
         "Выбери интересующий вопрос 👇",
         parse_mode="Markdown",
         reply_markup=faq_menu()
@@ -293,13 +293,13 @@ async def faq_answer(callback: CallbackQuery):
 async def contact_operator(callback: CallbackQuery):
     await callback.message.delete()
     await callback.message.answer(
-        f"{Emoji.ROCKET} **Связь с оператором**\n\n"
-        f"{Emoji.SHIELD} Создай заявку через кнопку «Создать заявку».\n"
-        f"{Emoji.STAR} Оператор ответит в ближайшее время.\n\n"
+        "🚀 **Связь с оператором**\n\n"
+        "🛡️ Создай заявку через кнопку «Создать заявку».\n"
+        "⭐ Оператор ответит в ближайшее время.\n\n"
         "📌 **Время ответа:**\n"
         "• В рабочее время: до 15 минут\n"
         "• Ночью: до 2 часов\n\n"
-        f"{Emoji.PARTY} Спасибо за понимание! 🙏",
+        "🎉 Спасибо за понимание! 🙏",
         parse_mode="Markdown",
         reply_markup=back_menu()
     )
@@ -310,17 +310,17 @@ async def contact_operator(callback: CallbackQuery):
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        await message.answer(f"{Emoji.SHIELD} ⛔ Доступ запрещен")
+        await message.answer("🛡️ ⛔ Доступ запрещен")
         return
     
     tickets = db.get_tickets()
     if not tickets:
-        await message.answer(f"{Emoji.DIAMOND} 📭 Нет открытых заявок")
+        await message.answer("💎 📭 Нет открытых заявок")
         return
     
     for ticket in tickets[:5]:
         await message.answer(
-            f"{Emoji.FIRE} **Заявка #{ticket[0]}**\n\n"
+            f"🔥 **Заявка #{ticket[0]}**\n\n"
             f"👤 @{ticket[2] or ticket[1]}\n"
             f"🆔 ID: {ticket[1]}\n\n"
             f"📝 **Текст:**\n{ticket[3][:300]}\n\n"
@@ -335,9 +335,9 @@ async def close_ticket(message: types.Message):
     try:
         ticket_id = int(message.text.split()[1])
         db.close_ticket(ticket_id)
-        await message.answer(f"{Emoji.PARTY} ✅ Заявка #{ticket_id} закрыта")
+        await message.answer("🎉 ✅ Заявка #{ticket_id} закрыта")
     except:
-        await message.answer(f"{Emoji.SHIELD} ❌ Использование: /close <id>")
+        await message.answer("🛡️ ❌ Использование: /close <id>")
 
 @dp.message(Command("stats"))
 async def show_stats(message: types.Message):
@@ -345,11 +345,11 @@ async def show_stats(message: types.Message):
         return
     stats = db.get_stats()
     await message.answer(
-        f"{Emoji.DIAMOND} **Статистика:**\n\n"
-        f"{Emoji.SHIELD} Всего заявок: {stats['total_tickets']}\n"
-        f"{Emoji.STAR} Открытых: {stats['open_tickets']}\n"
-        f"{Emoji.FIRE} Закрытых: {stats['closed_tickets']}\n"
-        f"{Emoji.PARTY} Пользователей: {stats['total_users']}",
+        "💎 **Статистика:**\n\n"
+        f"🛡️ Всего заявок: {stats['total_tickets']}\n"
+        f"⭐ Открытых: {stats['open_tickets']}\n"
+        f"🔥 Закрытых: {stats['closed_tickets']}\n"
+        f"🎉 Пользователей: {stats['total_users']}",
         parse_mode="Markdown"
     )
 
