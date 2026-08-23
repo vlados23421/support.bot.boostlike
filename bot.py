@@ -157,122 +157,45 @@ FAQ = {
         "🎉 Если прошло больше часа — создай заявку!"
 }
 
-# --- Автоответы ---
+# --- Автоответы (только для обычных сообщений, НЕ для заявок) ---
 
 AUTO_REPLIES = {
     "курс": "💱 Узнать курс монет можно по команде /rate",
     "монет": "💱 Узнать курс монет можно по команде /rate",
-    "заявк": "📝 Создать заявку можно через /start → Создать заявку",
-    "помощ": "📝 Создай заявку через /start → Создать заявку",
     "привет": "👋 Привет! Чем могу помочь? Нажми /start",
     "здравствуй": "👋 Здравствуйте! Чем могу помочь?",
     "спасибо": "🙌 Пожалуйста! Обращайтесь ещё!",
-    "проблем": "🛡️ Опиши проблему в заявке через /start → Создать заявку",
-    "баг": "🐛 Опиши баг в заявке, мы всё исправим!",
-    "не работает": "🔧 Создай заявку, мы проверим!",
-    "инструкц": "📖 Инструкция: /start → Частые вопросы → Как создать задание?"
 }
 
 # ==================== УЛУЧШЕНИЯ ====================
 
-# --- 2. РАССЫЛКА ВСЕМ ПОЛЬЗОВАТЕЛЯМ ---
+# --- НОЧНОЙ РЕЖИМ ---
 
-@dp.message(Command("broadcast"))
-async def broadcast(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    text = " ".join(message.text.split()[1:])
-    if not text:
-        await message.answer("❌ Использование: /broadcast <текст сообщения>")
-        return
-    
-    users = db.get_all_users()
-    success = 0
-    failed = 0
-    
-    status_msg = await message.answer("⏳ Отправляю рассылку...")
-    
-    for user in users:
-        try:
-            await bot.send_message(user[0], f"📢 {text}")
-            success += 1
-            await asyncio.sleep(0.05)  # Чтобы не заблокировали
-        except:
-            failed += 1
-    
-    await status_msg.edit_text(
-        f"✅ Рассылка завершена!\n"
-        f"📤 Отправлено: {success}\n"
-        f"❌ Не доставлено: {failed}"
-    )
+def is_night():
+    hour = datetime.now().hour
+    return hour < 8 or hour > 23
 
-# --- 4. ПОИСК ЗАЯВОК ---
-
-@dp.message(Command("find"))
-async def find_ticket(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    query = " ".join(message.text.split()[1:])
-    if not query:
-        await message.answer("❌ Использование: /find <текст или ID>")
-        return
-    
-    # Поиск по ID
-    if query.isdigit():
-        ticket = db.get_ticket_by_id(int(query))
-        if ticket:
-            await message.answer(
-                f"✅ **Заявка #{ticket[0]}**\n\n"
-                f"👤 @{ticket[2]}\n"
-                f"📝 {ticket[3]}\n"
-                f"📌 Статус: {ticket[4]}\n"
-                f"📅 {ticket[5]}",
-                parse_mode="Markdown"
-            )
-        else:
-            await message.answer("❌ Заявка не найдена")
-        return
-    
-    # Поиск по тексту
-    tickets = db.search_tickets(query)
-    if not tickets:
-        await message.answer("❌ Ничего не найдено")
-        return
-    
-    text = f"🔍 Найдено {len(tickets)} заявок:\n\n"
-    for ticket in tickets[:5]:
-        text += f"#{ticket[0]} — @{ticket[2]} — {ticket[3][:50]}...\n"
-    
-    if len(tickets) > 5:
-        text += f"\n... и ещё {len(tickets) - 5}"
-    
-    await message.answer(text)
-
-# --- 5. ОГРАНИЧЕНИЕ НА ЗАЯВКИ В ДЕНЬ ---
+# --- ПРОВЕРКА ЛИМИТА ---
 
 async def check_daily_limit(user_id):
     today = datetime.now().strftime("%Y-%m-%d")
     count = db.get_user_tickets_count(user_id, today)
-    return count < 5  # Максимум 5 заявок в день
+    return count < 5
 
-# --- 6. ИНТЕРАКТИВНЫЕ КНОПКИ С ПАГИНАЦИЕЙ ---
+# --- ЗВУКОВОЕ УВЕДОМЛЕНИЕ ---
 
-@dp.message(Command("admin"))
-async def admin_panel(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    tickets = db.get_tickets()
-    if not tickets:
-        await message.answer("📭 Нет открытых заявок")
-        return
-    
-    await show_tickets_page(message, tickets, 0)
+async def send_notification_with_sound(admin_id, text):
+    try:
+        await bot.send_audio(
+            admin_id,
+            audio="https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a0c8c8.mp3",
+            caption=text,
+            parse_mode="Markdown"
+        )
+    except:
+        await bot.send_message(admin_id, text, parse_mode="Markdown")
+
+# --- ПАГИНАЦИЯ ДЛЯ АДМИНА ---
 
 async def show_tickets_page(message, tickets, page):
     page_size = 3
@@ -307,147 +230,10 @@ async def show_tickets_page(message, tickets, page):
     else:
         await message.answer(text, parse_mode="Markdown", reply_markup=kb)
 
-@dp.callback_query(F.data.startswith("admin_page_"))
-async def admin_page_callback(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещен", show_alert=True)
-        return
-    
-    page = int(callback.data.split("_")[2])
-    tickets = db.get_tickets()
-    await show_tickets_page(callback.message, tickets, page)
-    await callback.answer()
-
-# --- 7. ВИЗУАЛЬНЫЙ СТАТУС В ЗАЯВКАХ ---
-
-STATUS_EMOJI = {
-    "Новая": "🟡",
-    "В работе": "🟠",
-    "Закрыта": "🟢"
-}
-
-# --- 8. ЗВУКОВЫЕ УВЕДОМЛЕНИЯ ---
-
-async def send_notification_with_sound(admin_id, text):
-    try:
-        await bot.send_audio(
-            admin_id,
-            audio="https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a0c8c8.mp3",
-            caption=text,
-            parse_mode="Markdown"
-        )
-    except:
-        await bot.send_message(admin_id, text, parse_mode="Markdown")
-
-# --- 9. ДАШБОРД В ВИДЕ КАРТИНКИ ---
-
-@dp.message(Command("dashboard"))
-async def dashboard(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    stats = db.get_stats()
-    
-    # Создаём текстовый дашборд
-    text = (
-        f"📊 **ДАШБОРД ПОДДЕРЖКИ**\n\n"
-        f"📌 Всего заявок: {stats['total_tickets']}\n"
-        f"🟡 Открытых: {stats['open_tickets']}\n"
-        f"🟢 Закрытых: {stats['closed_tickets']}\n"
-        f"⭐ Средняя оценка: {stats['avg_rating']:.1f}/5\n"
-        f"👤 Пользователей: {stats['total_users']}\n"
-        f"⏱ Среднее время ответа: {stats['avg_response_time']:.0f} мин"
-    )
-    
-    # Простая ASCII-диаграмма
-    total = stats['total_tickets'] or 1
-    open_bar = "█" * int((stats['open_tickets'] / total) * 20)
-    closed_bar = "█" * int((stats['closed_tickets'] / total) * 20)
-    
-    text += f"\n\n📈 **Статус заявок:**\n"
-    text += f"🟡 Открыто: {open_bar} {stats['open_tickets']}\n"
-    text += f"🟢 Закрыто: {closed_bar} {stats['closed_tickets']}"
-    
-    await message.answer(text, parse_mode="Markdown")
-
-# --- 10. НОЧНОЙ РЕЖИМ ---
-
-def is_night():
-    hour = datetime.now().hour
-    return hour < 8 or hour > 23
-
-# --- 12. БЛОКИРОВКА СПАМЕРОВ ---
-
-@dp.message(Command("block"))
-async def block_user(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    try:
-        user_id = int(message.text.split()[1])
-        db.block_user(user_id)
-        await message.answer(f"✅ Пользователь {user_id} заблокирован")
-    except:
-        await message.answer("❌ Использование: /block <user_id>")
-
-@dp.message(Command("unblock"))
-async def unblock_user(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    try:
-        user_id = int(message.text.split()[1])
-        db.unblock_user(user_id)
-        await message.answer(f"✅ Пользователь {user_id} разблокирован")
-    except:
-        await message.answer("❌ Использование: /unblock <user_id>")
-
-# --- 11. ЭКСПОРТ CSV ---
-
-@dp.callback_query(F.data == "export_csv")
-async def export_csv_callback(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещен", show_alert=True)
-        return
-    
-    await export_csv(callback.message)
-    await callback.answer()
-
-@dp.message(Command("export"))
-async def export_csv_command(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    await export_csv(message)
-
-async def export_csv(message):
-    tickets = db.get_all_tickets()
-    
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["ID", "Дата", "Пользователь", "Текст", "Статус", "Ответ", "Дата закрытия", "Оценка"])
-    
-    for ticket in tickets:
-        writer.writerow([
-            ticket[0], ticket[4], ticket[2], 
-            ticket[3][:200], ticket[5], ticket[6] or "", 
-            ticket[7] or "", ticket[8] or ""
-        ])
-    
-    await message.answer_document(
-        document=output.getvalue().encode(),
-        filename=f"tickets_{datetime.now().strftime('%Y%m%d')}.csv"
-    )
-
-# --- ОСНОВНЫЕ ОБРАБОТЧИКИ (С УЛУЧШЕНИЯМИ) ---
+# ==================== ОСНОВНЫЕ ОБРАБОТЧИКИ ====================
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    # Проверка на блокировку
     if db.is_user_blocked(message.from_user.id):
         await message.answer("⛔ Вы заблокированы. Обратитесь к администратору.")
         return
@@ -477,12 +263,18 @@ async def back_to_menu(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- АВТООТВЕТЫ ---
+# --- 1. АВТООТВЕТЫ (НЕ ВЛИЯЮТ НА ЗАЯВКИ) ---
 
 @dp.message()
-async def auto_reply(message: types.Message):
+async def auto_reply(message: types.Message, state: FSMContext):
+    """Автоответы только для обычных сообщений. Заявки НЕ трогаем!"""
     if message.text is None or message.text.startswith('/'):
         return
+    
+    # Если пользователь в процессе создания заявки — ПРОПУСКАЕМ
+    current_state = await state.get_state()
+    if current_state == SupportState.waiting_problem:
+        return  # ⬅️ НЕ УДАЛЯЕМ, НЕ ОТВЕЧАЕМ. Просто пропускаем.
     
     # Проверка на блокировку
     if db.is_user_blocked(message.from_user.id):
@@ -490,25 +282,22 @@ async def auto_reply(message: types.Message):
         return
     
     text = message.text.lower()
-    
     for word, reply in AUTO_REPLIES.items():
         if word in text:
             await message.answer(reply)
             break
 
-# --- ЗАЯВКИ (С ОГРАНИЧЕНИЕМ И УДАЛЕНИЕМ) ---
+# --- 2. СОЗДАНИЕ ЗАЯВКИ (КНОПКА) ---
 
 @dp.callback_query(F.data == "ticket")
 async def create_ticket(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     
-    # Проверка на блокировку
     if db.is_user_blocked(callback.from_user.id):
         await callback.message.answer("⛔ Вы заблокированы.")
         await callback.answer()
         return
     
-    # Проверка дневного лимита
     if not await check_daily_limit(callback.from_user.id):
         await callback.message.answer(
             "❌ Вы создали максимальное количество заявок на сегодня (5).\n"
@@ -531,9 +320,10 @@ async def create_ticket(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SupportState.waiting_problem)
     await callback.answer()
 
+# --- 3. СОХРАНЕНИЕ ЗАЯВКИ С ФОТО ---
+
 @dp.message(SupportState.waiting_problem, F.photo)
 async def save_ticket_with_photo(message: types.Message, state: FSMContext):
-    # Проверка на блокировку
     if db.is_user_blocked(message.from_user.id):
         await message.answer("⛔ Вы заблокированы.")
         return
@@ -554,7 +344,6 @@ async def save_ticket_with_photo(message: types.Message, state: FSMContext):
         f"[Фото] {message.caption or 'Без описания'}"
     )
     
-    # Удаляем сообщение пользователя
     await message.delete()
     
     # Ночной режим
@@ -584,21 +373,14 @@ async def save_ticket_with_photo(message: types.Message, state: FSMContext):
         f"📝 **Текст:**\n{message.caption or 'Без описания'}"
     )
     
-    # Отправляем в канал
     with open(photo_path, 'rb') as photo_file:
-        await bot.send_photo(
-            CHANNEL_ID,
-            photo_file,
-            caption=caption,
-            parse_mode="Markdown"
-        )
-    
-    # Отправляем в ЛС админу со звуком
-    await send_notification_with_sound(ADMIN_ID, caption)
+        await bot.send_photo(CHANNEL_ID, photo_file, caption=caption, parse_mode="Markdown")
+        await bot.send_photo(ADMIN_ID, photo_file, caption=caption, parse_mode="Markdown")
+
+# --- 4. СОХРАНЕНИЕ ЗАЯВКИ БЕЗ ФОТО ---
 
 @dp.message(SupportState.waiting_problem)
 async def save_ticket(message: types.Message, state: FSMContext):
-    # Проверка на блокировку
     if db.is_user_blocked(message.from_user.id):
         await message.answer("⛔ Вы заблокированы.")
         return
@@ -616,7 +398,6 @@ async def save_ticket(message: types.Message, state: FSMContext):
         message.text
     )
     
-    # Удаляем сообщение пользователя
     await message.delete()
     
     # Ночной режим
@@ -646,17 +427,306 @@ async def save_ticket(message: types.Message, state: FSMContext):
         f"📝 **Текст:**\n{message.text[:500]}"
     )
     
-    # Отправляем в канал
-    await bot.send_message(
-        CHANNEL_ID,
-        caption,
-        parse_mode="Markdown"
+    await bot.send_message(CHANNEL_ID, caption, parse_mode="Markdown")
+    await bot.send_message(ADMIN_ID, caption, parse_mode="Markdown")
+
+# --- 5. АДМИН-ПАНЕЛЬ (С ПАГИНАЦИЕЙ) ---
+
+@dp.message(Command("admin"))
+async def admin_panel(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    tickets = db.get_tickets()
+    if not tickets:
+        await message.answer("📭 Нет открытых заявок")
+        return
+    
+    await show_tickets_page(message, tickets, 0)
+
+@dp.callback_query(F.data.startswith("admin_page_"))
+async def admin_page_callback(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    page = int(callback.data.split("_")[2])
+    tickets = db.get_tickets()
+    await show_tickets_page(callback.message, tickets, page)
+    await callback.answer()
+
+# --- 6. ОТВЕТ ПОЛЬЗОВАТЕЛЮ ---
+
+@dp.message(Command("reply"))
+async def reply_to_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    try:
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            await message.answer("❌ Использование: /reply <id> <текст ответа>")
+            return
+        
+        ticket_id = int(parts[1])
+        reply_text = parts[2]
+        
+        ticket = db.get_ticket_by_id(ticket_id)
+        if not ticket:
+            await message.answer(f"❌ Заявка #{ticket_id} не найдена")
+            return
+        
+        await bot.send_message(
+            ticket[1],
+            f"📩 **Ответ оператора по заявке #{ticket_id}**\n\n"
+            f"{reply_text}\n\n"
+            f"🛡️ Если проблема решена, создайте новую заявку.",
+            parse_mode="Markdown"
+        )
+        
+        await bot.send_message(
+            CHANNEL_ID,
+            f"📩 **Ответ на заявку #{ticket_id}**\n\n"
+            f"👤 @{ticket[2]}\n\n"
+            f"📝 {reply_text}",
+            parse_mode="Markdown"
+        )
+        
+        await message.answer(f"✅ Ответ отправлен (заявка #{ticket_id})")
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+# --- 7. ЗАКРЫТИЕ ЗАЯВКИ ---
+
+@dp.message(Command("close"))
+async def close_ticket(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    try:
+        ticket_id = int(message.text.split()[1])
+        db.close_ticket(ticket_id)
+        
+        ticket = db.get_ticket_by_id(ticket_id)
+        if ticket:
+            await bot.send_message(
+                ticket[1],
+                f"✅ **Заявка #{ticket_id} закрыта!**\n\n"
+                "Пожалуйста, оцени качество поддержки:",
+                reply_markup=rate_keyboard()
+            )
+            
+            await bot.send_message(
+                CHANNEL_ID,
+                f"✅ **Заявка #{ticket_id} закрыта**\n\n"
+                f"👤 @{ticket[2]}",
+                parse_mode="Markdown"
+            )
+        
+        await message.answer(f"🎉 Заявка #{ticket_id} закрыта")
+        
+    except:
+        await message.answer("❌ Использование: /close <id>")
+
+# --- 8. ОЦЕНКА ПОДДЕРЖКИ ---
+
+@dp.callback_query(F.data.startswith("rate_"))
+async def save_rate(callback: CallbackQuery):
+    try:
+        rating = int(callback.data.split("_")[1])
+        user_id = callback.from_user.id
+        
+        db.add_feedback(user_id, rating)
+        
+        messages = {
+            1: "😢 Спасибо за честность! Мы работаем над улучшением.",
+            2: "😕 Спасибо! Расскажи, что нам улучшить?",
+            3: "😐 Спасибо! Постараемся быть лучше.",
+            4: "😊 Спасибо! Рады, что тебе понравилось!",
+            5: "🌟 Спасибо! Рады, что ты доволен!"
+        }
+        
+        await callback.message.edit_text(
+            f"⭐ Спасибо за оценку {rating}!\n\n{messages.get(rating, '')}"
+        )
+        
+        await bot.send_message(
+            ADMIN_ID,
+            f"📊 **Новая оценка поддержки**\n\n"
+            f"👤 @{callback.from_user.username or callback.from_user.id}\n"
+            f"⭐ Оценка: {rating}/5"
+        )
+        
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        await callback.answer()
+
+# --- 9. ПОИСК ЗАЯВОК ---
+
+@dp.message(Command("find"))
+async def find_ticket(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    query = " ".join(message.text.split()[1:])
+    if not query:
+        await message.answer("❌ Использование: /find <текст или ID>")
+        return
+    
+    if query.isdigit():
+        ticket = db.get_ticket_by_id(int(query))
+        if ticket:
+            await message.answer(
+                f"✅ **Заявка #{ticket[0]}**\n\n"
+                f"👤 @{ticket[2]}\n"
+                f"📝 {ticket[3]}\n"
+                f"📌 Статус: {ticket[4]}\n"
+                f"📅 {ticket[5]}",
+                parse_mode="Markdown"
+            )
+        else:
+            await message.answer("❌ Заявка не найдена")
+        return
+    
+    tickets = db.search_tickets(query)
+    if not tickets:
+        await message.answer("❌ Ничего не найдено")
+        return
+    
+    text = f"🔍 Найдено {len(tickets)} заявок:\n\n"
+    for ticket in tickets[:5]:
+        text += f"#{ticket[0]} — @{ticket[2]} — {ticket[3][:50]}...\n"
+    
+    if len(tickets) > 5:
+        text += f"\n... и ещё {len(tickets) - 5}"
+    
+    await message.answer(text)
+
+# --- 10. СТАТИСТИКА ---
+
+@dp.message(Command("stats"))
+async def show_stats(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    stats = db.get_stats()
+    
+    text = (
+        f"📊 **Статистика**\n\n"
+        f"📌 Всего заявок: {stats['total_tickets']}\n"
+        f"🟡 Открытых: {stats['open_tickets']}\n"
+        f"🟢 Закрытых: {stats['closed_tickets']}\n"
+        f"⭐ Средняя оценка: {stats['avg_rating']:.1f}/5\n"
+        f"👤 Пользователей: {stats['total_users']}\n"
+        f"⏱ Среднее время ответа: {stats['avg_response_time']:.0f} мин"
     )
     
-    # Отправляем в ЛС админу со звуком
-    await send_notification_with_sound(ADMIN_ID, caption)
+    await message.answer(text, parse_mode="Markdown")
 
-# --- ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (КУРС, FAQ, ОПЕРАТОР) ---
+# --- 11. ЭКСПОРТ CSV ---
+
+@dp.callback_query(F.data == "export_csv")
+async def export_csv_callback(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    await export_csv(callback.message)
+    await callback.answer()
+
+@dp.message(Command("export"))
+async def export_csv_command(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    await export_csv(message)
+
+async def export_csv(message):
+    tickets = db.get_all_tickets()
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Дата", "Пользователь", "Текст", "Статус"])
+    
+    for ticket in tickets:
+        writer.writerow([ticket[0], ticket[5], ticket[2], ticket[3][:200], ticket[4]])
+    
+    await message.answer_document(
+        document=output.getvalue().encode(),
+        filename=f"tickets_{datetime.now().strftime('%Y%m%d')}.csv"
+    )
+
+# --- 12. РАССЫЛКА ---
+
+@dp.message(Command("broadcast"))
+async def broadcast(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    text = " ".join(message.text.split()[1:])
+    if not text:
+        await message.answer("❌ Использование: /broadcast <текст>")
+        return
+    
+    users = db.get_all_users()
+    success = 0
+    failed = 0
+    
+    status_msg = await message.answer("⏳ Отправляю рассылку...")
+    
+    for user in users:
+        try:
+            await bot.send_message(user[0], f"📢 {text}")
+            success += 1
+            await asyncio.sleep(0.05)
+        except:
+            failed += 1
+    
+    await status_msg.edit_text(
+        f"✅ Рассылка завершена!\n"
+        f"📤 Отправлено: {success}\n"
+        f"❌ Не доставлено: {failed}"
+    )
+
+# --- 13. БЛОКИРОВКА ---
+
+@dp.message(Command("block"))
+async def block_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    try:
+        user_id = int(message.text.split()[1])
+        db.block_user(user_id)
+        await message.answer(f"✅ Пользователь {user_id} заблокирован")
+    except:
+        await message.answer("❌ Использование: /block <user_id>")
+
+@dp.message(Command("unblock"))
+async def unblock_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    try:
+        user_id = int(message.text.split()[1])
+        db.unblock_user(user_id)
+        await message.answer(f"✅ Пользователь {user_id} разблокирован")
+    except:
+        await message.answer("❌ Использование: /unblock <user_id>")
+
+# --- 14. КУРС МОНЕТ ---
 
 @dp.callback_query(F.data == "rate")
 async def show_rate(callback: CallbackQuery):
@@ -689,6 +759,8 @@ async def show_rate(callback: CallbackQuery):
     )
     await callback.answer()
 
+# --- 15. FAQ ---
+
 @dp.callback_query(F.data == "faq")
 async def show_faq(callback: CallbackQuery):
     await callback.message.delete()
@@ -715,6 +787,8 @@ async def faq_answer(callback: CallbackQuery):
     )
     await callback.answer()
 
+# --- 16. ОПЕРАТОР ---
+
 @dp.callback_query(F.data == "operator")
 async def contact_operator(callback: CallbackQuery):
     await callback.message.delete()
@@ -730,6 +804,8 @@ async def contact_operator(callback: CallbackQuery):
         reply_markup=back_menu()
     )
     await callback.answer()
+
+# --- 17. ИНСТРУКЦИЯ ---
 
 @dp.callback_query(F.data == "guide")
 async def show_guide(callback: CallbackQuery):
