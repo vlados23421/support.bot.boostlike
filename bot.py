@@ -3,7 +3,7 @@ import logging
 import os
 import csv
 from io import StringIO
-from datetime import datetime, timedelta
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -12,48 +12,94 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID
 from database import Database
 from emoji import Emoji
-import aiohttp
 from aiohttp import web
 
-logging.basicConfig(level=logging.INFO)
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 db = Database()
 
-# --- Состояния ---
+# ==================== СОСТОЯНИЯ ====================
+
 class SupportState(StatesGroup):
     waiting_problem = State()
 
-# --- Клавиатуры ---
+# ==================== КЛАВИАТУРЫ ====================
 
-def main_menu():
+def main_menu(user_id=None):
+    """Главное меню с отдельной кнопкой для владельца"""
+    keyboard = [
+        [InlineKeyboardButton(
+            text="Создать заявку",
+            callback_data="ticket",
+            icon_custom_emoji_id=Emoji.SHIELD
+        )],
+        [InlineKeyboardButton(
+            text="Курс монет",
+            callback_data="rate",
+            icon_custom_emoji_id=Emoji.STAR
+        )],
+        [InlineKeyboardButton(
+            text="Частые вопросы",
+            callback_data="faq",
+            icon_custom_emoji_id=Emoji.DIAMOND
+        )],
+        [InlineKeyboardButton(
+            text="Связаться с оператором",
+            callback_data="operator",
+            icon_custom_emoji_id=Emoji.ROCKET
+        )],
+        [InlineKeyboardButton(
+            text="📖 Инструкция",
+            callback_data="guide",
+            icon_custom_emoji_id=Emoji.DIAMOND
+        )]
+    ]
+    
+    # 🔥 КНОПКА ДЛЯ ВЛАДЕЛЬЦА (показывается только админу)
+    if user_id == ADMIN_ID:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🔐 Панель управления",
+                callback_data="admin_panel",
+                icon_custom_emoji_id=Emoji.DIAMOND
+            )
+        ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def admin_panel_menu():
+    """Меню панели управления для владельца"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text="Создать заявку",
-                callback_data="ticket",
-                icon_custom_emoji_id=Emoji.SHIELD
+                text="📋 Список заявок",
+                callback_data="admin_tickets"
             )],
             [InlineKeyboardButton(
-                text="Курс монет",
-                callback_data="rate",
-                icon_custom_emoji_id=Emoji.STAR
+                text="📊 Статистика",
+                callback_data="admin_stats"
             )],
             [InlineKeyboardButton(
-                text="Частые вопросы",
-                callback_data="faq",
-                icon_custom_emoji_id=Emoji.DIAMOND
+                text="📤 Экспорт CSV",
+                callback_data="admin_export"
             )],
             [InlineKeyboardButton(
-                text="Связаться с оператором",
-                callback_data="operator",
-                icon_custom_emoji_id=Emoji.ROCKET
+                text="📢 Рассылка",
+                callback_data="admin_broadcast"
             )],
             [InlineKeyboardButton(
-                text="📖 Инструкция",
-                callback_data="guide",
-                icon_custom_emoji_id=Emoji.DIAMOND
+                text="🚫 Блокировка",
+                callback_data="admin_block"
+            )],
+            [InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data="back_to_menu"
             )]
         ]
     )
@@ -113,7 +159,7 @@ def rate_keyboard():
         ]
     )
 
-# --- FAQ ---
+# ==================== FAQ ====================
 
 FAQ = {
     "Как пополнить баланс?": 
@@ -132,7 +178,7 @@ FAQ = {
         "• 25 ⭐ → 4 500 монет\n"
         "• 50 ⭐ → 9 750 монет\n"
         "• 75 ⭐ → 15 750 монет\n"
-        "• 100 ⭐ → 21 000 монет\n\n"
+        "• 100 ⭐ → 21 000 монет (+40% бонус)\n\n"
         "💎 **За крипту:**\n"
         "• 1.5 ₽ → 450 монет\n"
         "• 7.5 ₽ → 2 250 монет\n"
@@ -157,32 +203,16 @@ FAQ = {
         "🎉 Если прошло больше часа — создай заявку!"
 }
 
-# --- Автоответы (только для обычных сообщений, НЕ для заявок) ---
-
-AUTO_REPLIES = {
-    "курс": "💱 Узнать курс монет можно по команде /rate",
-    "монет": "💱 Узнать курс монет можно по команде /rate",
-    "привет": "👋 Привет! Чем могу помочь? Нажми /start",
-    "здравствуй": "👋 Здравствуйте! Чем могу помочь?",
-    "спасибо": "🙌 Пожалуйста! Обращайтесь ещё!",
-}
-
-# ==================== УЛУЧШЕНИЯ ====================
-
-# --- НОЧНОЙ РЕЖИМ ---
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 def is_night():
     hour = datetime.now().hour
     return hour < 8 or hour > 23
 
-# --- ПРОВЕРКА ЛИМИТА ---
-
 async def check_daily_limit(user_id):
     today = datetime.now().strftime("%Y-%m-%d")
     count = db.get_user_tickets_count(user_id, today)
     return count < 5
-
-# --- ЗВУКОВОЕ УВЕДОМЛЕНИЕ ---
 
 async def send_notification_with_sound(admin_id, text):
     try:
@@ -194,8 +224,6 @@ async def send_notification_with_sound(admin_id, text):
         )
     except:
         await bot.send_message(admin_id, text, parse_mode="Markdown")
-
-# --- ПАГИНАЦИЯ ДЛЯ АДМИНА ---
 
 async def show_tickets_page(message, tickets, page):
     page_size = 3
@@ -220,7 +248,8 @@ async def show_tickets_page(message, tickets, page):
                 InlineKeyboardButton("➡️", callback_data=f"admin_page_{page+1}")
             ],
             [
-                InlineKeyboardButton("📥 Экспорт CSV", callback_data="export_csv")
+                InlineKeyboardButton("📥 Экспорт CSV", callback_data="admin_export"),
+                InlineKeyboardButton("🔙 Назад", callback_data="back_to_admin_panel")
             ]
         ]
     )
@@ -230,10 +259,12 @@ async def show_tickets_page(message, tickets, page):
     else:
         await message.answer(text, parse_mode="Markdown", reply_markup=kb)
 
-# ==================== ОСНОВНЫЕ ОБРАБОТЧИКИ ====================
+# ==================== ОБРАБОТЧИКИ КОМАНД ====================
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
+    logging.info(f"🔄 Команда /start от {message.from_user.id}")
+    
     if db.is_user_blocked(message.from_user.id):
         await message.answer("⛔ Вы заблокированы. Обратитесь к администратору.")
         return
@@ -249,7 +280,7 @@ async def start(message: types.Message):
         "📖 Изучить инструкции\n\n"
         "Выбери действие ниже 👇",
         parse_mode="Markdown",
-        reply_markup=main_menu()
+        reply_markup=main_menu(message.from_user.id)
     )
 
 @dp.callback_query(F.data == "back")
@@ -259,38 +290,27 @@ async def back_to_menu(callback: CallbackQuery):
         "🎉 **Главное меню**\n\n"
         "Выбери действие:",
         parse_mode="Markdown",
-        reply_markup=main_menu()
+        reply_markup=main_menu(callback.from_user.id)
     )
     await callback.answer()
 
-# --- 1. АВТООТВЕТЫ (НЕ ВЛИЯЮТ НА ЗАЯВКИ) ---
+@dp.callback_query(F.data == "back_to_menu")
+async def back_to_main_menu(callback: CallbackQuery):
+    await callback.message.delete()
+    await callback.message.answer(
+        "🎉 **Главное меню**\n\n"
+        "Выбери действие:",
+        parse_mode="Markdown",
+        reply_markup=main_menu(callback.from_user.id)
+    )
+    await callback.answer()
 
-@dp.message()
-async def auto_reply(message: types.Message, state: FSMContext):
-    """Автоответы только для обычных сообщений. Заявки НЕ трогаем!"""
-    if message.text is None or message.text.startswith('/'):
-        return
-    
-    # Если пользователь в процессе создания заявки — ПРОПУСКАЕМ
-    current_state = await state.get_state()
-    if current_state == SupportState.waiting_problem:
-        return  # ⬅️ НЕ УДАЛЯЕМ, НЕ ОТВЕЧАЕМ. Просто пропускаем.
-    
-    # Проверка на блокировку
-    if db.is_user_blocked(message.from_user.id):
-        await message.answer("⛔ Вы заблокированы.")
-        return
-    
-    text = message.text.lower()
-    for word, reply in AUTO_REPLIES.items():
-        if word in text:
-            await message.answer(reply)
-            break
-
-# --- 2. СОЗДАНИЕ ЗАЯВКИ (КНОПКА) ---
+# ==================== СОЗДАНИЕ ЗАЯВКИ ====================
 
 @dp.callback_query(F.data == "ticket")
 async def create_ticket(callback: CallbackQuery, state: FSMContext):
+    logging.info(f"📝 Нажата кнопка 'Создать заявку' от {callback.from_user.id}")
+    
     await callback.message.delete()
     
     if db.is_user_blocked(callback.from_user.id):
@@ -316,14 +336,19 @@ async def create_ticket(callback: CallbackQuery, state: FSMContext):
         "🚀 Оператор ответит в ближайшее время ⏳",
         parse_mode="Markdown"
     )
+    
     await state.update_data(last_message_id=msg.message_id)
     await state.set_state(SupportState.waiting_problem)
+    
+    logging.info(f"✅ Состояние установлено: {await state.get_state()} для {callback.from_user.id}")
     await callback.answer()
 
-# --- 3. СОХРАНЕНИЕ ЗАЯВКИ С ФОТО ---
+# ==================== СОХРАНЕНИЕ ЗАЯВКИ ====================
 
 @dp.message(SupportState.waiting_problem, F.photo)
 async def save_ticket_with_photo(message: types.Message, state: FSMContext):
+    logging.info(f"📸 Получено фото в состоянии заявки от {message.from_user.id}")
+    
     if db.is_user_blocked(message.from_user.id):
         await message.answer("⛔ Вы заблокированы.")
         return
@@ -346,7 +371,6 @@ async def save_ticket_with_photo(message: types.Message, state: FSMContext):
     
     await message.delete()
     
-    # Ночной режим
     if is_night():
         await message.answer(
             "🌙 **Заявка принята!**\n\n"
@@ -364,6 +388,7 @@ async def save_ticket_with_photo(message: types.Message, state: FSMContext):
         )
     
     await state.clear()
+    logging.info(f"✅ Заявка #{ticket_id} сохранена, состояние очищено")
     
     user_link = f"@{message.from_user.username}" if message.from_user.username else f"ID: {message.from_user.id}"
     caption = (
@@ -377,10 +402,10 @@ async def save_ticket_with_photo(message: types.Message, state: FSMContext):
         await bot.send_photo(CHANNEL_ID, photo_file, caption=caption, parse_mode="Markdown")
         await bot.send_photo(ADMIN_ID, photo_file, caption=caption, parse_mode="Markdown")
 
-# --- 4. СОХРАНЕНИЕ ЗАЯВКИ БЕЗ ФОТО ---
-
 @dp.message(SupportState.waiting_problem)
 async def save_ticket(message: types.Message, state: FSMContext):
+    logging.info(f"📩 Получено сообщение в состоянии заявки от {message.from_user.id}: {message.text[:50]}...")
+    
     if db.is_user_blocked(message.from_user.id):
         await message.answer("⛔ Вы заблокированы.")
         return
@@ -400,7 +425,6 @@ async def save_ticket(message: types.Message, state: FSMContext):
     
     await message.delete()
     
-    # Ночной режим
     if is_night():
         await message.answer(
             "🌙 **Заявка принята!**\n\n"
@@ -418,6 +442,7 @@ async def save_ticket(message: types.Message, state: FSMContext):
         )
     
     await state.clear()
+    logging.info(f"✅ Заявка #{ticket_id} сохранена, состояние очищено")
     
     user_link = f"@{message.from_user.username}" if message.from_user.username else f"ID: {message.from_user.id}"
     caption = (
@@ -430,20 +455,89 @@ async def save_ticket(message: types.Message, state: FSMContext):
     await bot.send_message(CHANNEL_ID, caption, parse_mode="Markdown")
     await bot.send_message(ADMIN_ID, caption, parse_mode="Markdown")
 
-# --- 5. АДМИН-ПАНЕЛЬ (С ПАГИНАЦИЕЙ) ---
+# ==================== АВТООТВЕТЫ ====================
 
-@dp.message(Command("admin"))
-async def admin_panel(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
+@dp.message()
+async def auto_reply(message: types.Message, state: FSMContext):
+    if message.text is None or message.text.startswith('/'):
         return
+    
+    current_state = await state.get_state()
+    
+    if current_state == SupportState.waiting_problem:
+        return
+    
+    if db.is_user_blocked(message.from_user.id):
+        await message.answer("⛔ Вы заблокированы.")
+        return
+    
+    text = message.text.lower()
+    auto_replies = {
+        "курс": "💱 Узнать курс монет можно по команде /rate",
+        "монет": "💱 Узнать курс монет можно по команде /rate",
+        "привет": "👋 Привет! Чем могу помочь? Нажми /start",
+        "здравствуй": "👋 Здравствуйте! Чем могу помочь?",
+        "спасибо": "🙌 Пожалуйста! Обращайтесь ещё!",
+    }
+    
+    for word, reply in auto_replies.items():
+        if word in text:
+            await message.answer(reply)
+            break
+
+# ==================== ПАНЕЛЬ УПРАВЛЕНИЯ ДЛЯ ВЛАДЕЛЬЦА ====================
+
+@dp.callback_query(F.data == "admin_panel")
+async def open_admin_panel(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    await callback.message.delete()
+    await callback.message.answer(
+        "🔐 **Панель управления**\n\n"
+        "Выбери действие:",
+        parse_mode="Markdown",
+        reply_markup=admin_panel_menu()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "back_to_admin_panel")
+async def back_to_admin_panel(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    await callback.message.delete()
+    await callback.message.answer(
+        "🔐 **Панель управления**\n\n"
+        "Выбери действие:",
+        parse_mode="Markdown",
+        reply_markup=admin_panel_menu()
+    )
+    await callback.answer()
+
+# ==================== АДМИН: ЗАЯВКИ ====================
+
+@dp.callback_query(F.data == "admin_tickets")
+async def admin_tickets(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    await callback.message.delete()
     
     tickets = db.get_tickets()
     if not tickets:
-        await message.answer("📭 Нет открытых заявок")
+        await callback.message.answer(
+            "📭 Нет открытых заявок",
+            reply_markup=back_menu()
+        )
+        await callback.answer()
         return
     
-    await show_tickets_page(message, tickets, 0)
+    await show_tickets_page(callback.message, tickets, 0)
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_page_"))
 async def admin_page_callback(callback: CallbackQuery):
@@ -456,7 +550,167 @@ async def admin_page_callback(callback: CallbackQuery):
     await show_tickets_page(callback.message, tickets, page)
     await callback.answer()
 
-# --- 6. ОТВЕТ ПОЛЬЗОВАТЕЛЮ ---
+# ==================== АДМИН: СТАТИСТИКА ====================
+
+@dp.callback_query(F.data == "admin_stats")
+async def admin_stats(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    await callback.message.delete()
+    
+    stats = db.get_stats()
+    
+    text = (
+        f"📊 **Статистика**\n\n"
+        f"📌 Всего заявок: {stats['total_tickets']}\n"
+        f"🟡 Открытых: {stats['open_tickets']}\n"
+        f"🟢 Закрытых: {stats['closed_tickets']}\n"
+        f"⭐ Средняя оценка: {stats['avg_rating']:.1f}/5\n"
+        f"👤 Пользователей: {stats['total_users']}\n"
+        f"⏱ Среднее время ответа: {stats['avg_response_time']:.0f} мин"
+    )
+    
+    await callback.message.answer(
+        text,
+        parse_mode="Markdown",
+        reply_markup=back_menu()
+    )
+    await callback.answer()
+
+# ==================== АДМИН: ЭКСПОРТ CSV ====================
+
+@dp.callback_query(F.data == "admin_export")
+async def admin_export(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    await callback.message.delete()
+    await export_csv(callback.message)
+    await callback.answer()
+
+@dp.message(Command("export"))
+async def export_csv_command(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    await export_csv(message)
+
+async def export_csv(message):
+    tickets = db.get_all_tickets()
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Дата", "Пользователь", "Текст", "Статус"])
+    
+    for ticket in tickets:
+        writer.writerow([ticket[0], ticket[5], ticket[2], ticket[3][:200], ticket[4]])
+    
+    await message.answer_document(
+        document=output.getvalue().encode(),
+        filename=f"tickets_{datetime.now().strftime('%Y%m%d')}.csv"
+    )
+
+# ==================== АДМИН: РАССЫЛКА ====================
+
+@dp.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast_menu(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    await callback.message.delete()
+    await callback.message.answer(
+        "📢 **Рассылка**\n\n"
+        "Отправь сообщение командой:\n"
+        "/broadcast <текст>\n\n"
+        "Пример: /broadcast Всем привет!",
+        parse_mode="Markdown",
+        reply_markup=back_menu()
+    )
+    await callback.answer()
+
+@dp.message(Command("broadcast"))
+async def broadcast(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    text = " ".join(message.text.split()[1:])
+    if not text:
+        await message.answer("❌ Использование: /broadcast <текст>")
+        return
+    
+    users = db.get_all_users()
+    success = 0
+    failed = 0
+    
+    status_msg = await message.answer("⏳ Отправляю рассылку...")
+    
+    for user in users:
+        try:
+            await bot.send_message(user[0], f"📢 {text}")
+            success += 1
+            await asyncio.sleep(0.05)
+        except:
+            failed += 1
+    
+    await status_msg.edit_text(
+        f"✅ Рассылка завершена!\n"
+        f"📤 Отправлено: {success}\n"
+        f"❌ Не доставлено: {failed}"
+    )
+
+# ==================== АДМИН: БЛОКИРОВКА ====================
+
+@dp.callback_query(F.data == "admin_block")
+async def admin_block_menu(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+    
+    await callback.message.delete()
+    await callback.message.answer(
+        "🚫 **Блокировка**\n\n"
+        "Команды:\n"
+        "/block <user_id> — заблокировать\n"
+        "/unblock <user_id> — разблокировать\n\n"
+        "Чтобы узнать user_id, отправь /admin и найди нужного пользователя.",
+        parse_mode="Markdown",
+        reply_markup=back_menu()
+    )
+    await callback.answer()
+
+@dp.message(Command("block"))
+async def block_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    try:
+        user_id = int(message.text.split()[1])
+        db.block_user(user_id)
+        await message.answer(f"✅ Пользователь {user_id} заблокирован")
+    except:
+        await message.answer("❌ Использование: /block <user_id>")
+
+@dp.message(Command("unblock"))
+async def unblock_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Доступ запрещен")
+        return
+    
+    try:
+        user_id = int(message.text.split()[1])
+        db.unblock_user(user_id)
+        await message.answer(f"✅ Пользователь {user_id} разблокирован")
+    except:
+        await message.answer("❌ Использование: /unblock <user_id>")
+
+# ==================== ОТВЕТ ПОЛЬЗОВАТЕЛЮ ====================
 
 @dp.message(Command("reply"))
 async def reply_to_user(message: types.Message):
@@ -499,7 +753,7 @@ async def reply_to_user(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
-# --- 7. ЗАКРЫТИЕ ЗАЯВКИ ---
+# ==================== ЗАКРЫТИЕ ЗАЯВКИ ====================
 
 @dp.message(Command("close"))
 async def close_ticket(message: types.Message):
@@ -532,7 +786,7 @@ async def close_ticket(message: types.Message):
     except:
         await message.answer("❌ Использование: /close <id>")
 
-# --- 8. ОЦЕНКА ПОДДЕРЖКИ ---
+# ==================== ОЦЕНКА ПОДДЕРЖКИ ====================
 
 @dp.callback_query(F.data.startswith("rate_"))
 async def save_rate(callback: CallbackQuery):
@@ -564,10 +818,10 @@ async def save_rate(callback: CallbackQuery):
         await callback.answer()
         
     except Exception as e:
-        logging.error(f"Ошибка: {e}")
+        logging.error(f"Ошибка сохранения оценки: {e}")
         await callback.answer()
 
-# --- 9. ПОИСК ЗАЯВОК ---
+# ==================== ПОИСК ЗАЯВОК ====================
 
 @dp.message(Command("find"))
 async def find_ticket(message: types.Message):
@@ -609,124 +863,7 @@ async def find_ticket(message: types.Message):
     
     await message.answer(text)
 
-# --- 10. СТАТИСТИКА ---
-
-@dp.message(Command("stats"))
-async def show_stats(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    stats = db.get_stats()
-    
-    text = (
-        f"📊 **Статистика**\n\n"
-        f"📌 Всего заявок: {stats['total_tickets']}\n"
-        f"🟡 Открытых: {stats['open_tickets']}\n"
-        f"🟢 Закрытых: {stats['closed_tickets']}\n"
-        f"⭐ Средняя оценка: {stats['avg_rating']:.1f}/5\n"
-        f"👤 Пользователей: {stats['total_users']}\n"
-        f"⏱ Среднее время ответа: {stats['avg_response_time']:.0f} мин"
-    )
-    
-    await message.answer(text, parse_mode="Markdown")
-
-# --- 11. ЭКСПОРТ CSV ---
-
-@dp.callback_query(F.data == "export_csv")
-async def export_csv_callback(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещен", show_alert=True)
-        return
-    
-    await export_csv(callback.message)
-    await callback.answer()
-
-@dp.message(Command("export"))
-async def export_csv_command(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    await export_csv(message)
-
-async def export_csv(message):
-    tickets = db.get_all_tickets()
-    
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["ID", "Дата", "Пользователь", "Текст", "Статус"])
-    
-    for ticket in tickets:
-        writer.writerow([ticket[0], ticket[5], ticket[2], ticket[3][:200], ticket[4]])
-    
-    await message.answer_document(
-        document=output.getvalue().encode(),
-        filename=f"tickets_{datetime.now().strftime('%Y%m%d')}.csv"
-    )
-
-# --- 12. РАССЫЛКА ---
-
-@dp.message(Command("broadcast"))
-async def broadcast(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    text = " ".join(message.text.split()[1:])
-    if not text:
-        await message.answer("❌ Использование: /broadcast <текст>")
-        return
-    
-    users = db.get_all_users()
-    success = 0
-    failed = 0
-    
-    status_msg = await message.answer("⏳ Отправляю рассылку...")
-    
-    for user in users:
-        try:
-            await bot.send_message(user[0], f"📢 {text}")
-            success += 1
-            await asyncio.sleep(0.05)
-        except:
-            failed += 1
-    
-    await status_msg.edit_text(
-        f"✅ Рассылка завершена!\n"
-        f"📤 Отправлено: {success}\n"
-        f"❌ Не доставлено: {failed}"
-    )
-
-# --- 13. БЛОКИРОВКА ---
-
-@dp.message(Command("block"))
-async def block_user(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    try:
-        user_id = int(message.text.split()[1])
-        db.block_user(user_id)
-        await message.answer(f"✅ Пользователь {user_id} заблокирован")
-    except:
-        await message.answer("❌ Использование: /block <user_id>")
-
-@dp.message(Command("unblock"))
-async def unblock_user(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Доступ запрещен")
-        return
-    
-    try:
-        user_id = int(message.text.split()[1])
-        db.unblock_user(user_id)
-        await message.answer(f"✅ Пользователь {user_id} разблокирован")
-    except:
-        await message.answer("❌ Использование: /unblock <user_id>")
-
-# --- 14. КУРС МОНЕТ ---
+# ==================== КУРС МОНЕТ ====================
 
 @dp.callback_query(F.data == "rate")
 async def show_rate(callback: CallbackQuery):
@@ -743,7 +880,7 @@ async def show_rate(callback: CallbackQuery):
         "• 25 ⭐ → 4 500 монет\n"
         "• 50 ⭐ → 9 750 монет\n"
         "• 75 ⭐ → 15 750 монет\n"
-        "• 100 ⭐ → 21 000 монет\n\n"
+        "• 100 ⭐ → 21 000 монет (+40% бонус)\n\n"
         "💎 **Пакеты за крипту:**\n"
         "• 1.5 ₽ → 450 монет\n"
         "• 7.5 ₽ → 2 250 монет\n"
@@ -759,7 +896,7 @@ async def show_rate(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- 15. FAQ ---
+# ==================== FAQ ====================
 
 @dp.callback_query(F.data == "faq")
 async def show_faq(callback: CallbackQuery):
@@ -787,7 +924,7 @@ async def faq_answer(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- 16. ОПЕРАТОР ---
+# ==================== ОПЕРАТОР ====================
 
 @dp.callback_query(F.data == "operator")
 async def contact_operator(callback: CallbackQuery):
@@ -805,7 +942,7 @@ async def contact_operator(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- 17. ИНСТРУКЦИЯ ---
+# ==================== ИНСТРУКЦИЯ ====================
 
 @dp.callback_query(F.data == "guide")
 async def show_guide(callback: CallbackQuery):
@@ -823,12 +960,13 @@ async def show_guide(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- ЗАПУСК ---
+# ==================== ЗАПУСК ====================
 
 async def health_check(request):
     return web.Response(text="OK")
 
 async def run_bot():
+    logging.info("🚀 Бот запущен и готов к работе!")
     await dp.start_polling(bot)
 
 async def main():
@@ -845,7 +983,7 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     
-    logging.info(f"✅ Бот запущен на порту {port}")
+    logging.info(f"✅ Веб-сервер запущен на порту {port}")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
